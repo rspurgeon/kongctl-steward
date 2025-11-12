@@ -1,0 +1,123 @@
+# Example GitHub Actions workflow for kongctl-steward
+# Copy this to .github/workflows/steward.yml in your repository
+
+name: Kong CTL Steward Agent
+
+on:
+  # Run every 4 hours
+  schedule:
+    - cron: '0 */4 * * *'
+
+  # Allow manual triggering for testing
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Run in dry-run mode (no actual actions)'
+        required: false
+        default: 'true'
+        type: choice
+        options:
+          - 'true'
+          - 'false'
+      max_issues:
+        description: 'Maximum issues to process'
+        required: false
+        default: '20'
+
+jobs:
+  run-agent:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Restore vector database cache
+        uses: actions/cache@v4
+        with:
+          path: chroma_db
+          key: vector-db-${{ github.repository }}-${{ hashFiles('**/chroma_db/**') }}
+          restore-keys: |
+            vector-db-${{ github.repository }}-
+
+      - name: Restore state cache
+        uses: actions/cache@v4
+        with:
+          path: state
+          key: agent-state-${{ github.repository }}-${{ github.run_number }}
+          restore-keys: |
+            agent-state-${{ github.repository }}-
+
+      - name: Run steward agent
+        env:
+          # Required: GitHub token for API access
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+          # Required: Target repository (defaults to Kong/kongctl)
+          GITHUB_REPO: ${{ secrets.TARGET_REPO || 'Kong/kongctl' }}
+
+          # Required: LLM API keys (configure in repository secrets)
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+
+          # Optional: LLM provider selection
+          LLM_PROVIDER: ${{ vars.LLM_PROVIDER || 'anthropic' }}
+
+          # Optional: Runtime configuration
+          DRY_RUN: ${{ github.event.inputs.dry_run || 'true' }}
+          MAX_ISSUES_PER_RUN: ${{ github.event.inputs.max_issues || '20' }}
+          CONFIDENCE_THRESHOLD: 0.80
+          LOG_LEVEL: INFO
+        run: |
+          python steward.py
+
+      - name: Upload logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: steward-logs-${{ github.run_number }}
+          path: logs/
+          retention-days: 30
+
+      - name: Upload state
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: agent-state-${{ github.run_number }}
+          path: state/
+          retention-days: 7
+
+# Configuration Instructions:
+#
+# 1. Required Secrets (Settings → Secrets and variables → Actions → New repository secret):
+#    - ANTHROPIC_API_KEY: Your Anthropic API key (for Claude)
+#    - OPENAI_API_KEY: Your OpenAI API key (for GPT)
+#    - TARGET_REPO: Optional - repository to manage (defaults to Kong/kongctl)
+#
+# 2. Required Permissions (Settings → Actions → General → Workflow permissions):
+#    - Enable "Read and write permissions"
+#    - This allows the agent to add labels and comments to issues
+#
+# 3. Optional Variables (Settings → Secrets and variables → Actions → Variables):
+#    - LLM_PROVIDER: Choose 'anthropic' or 'openai' (default: anthropic)
+#
+# 4. Testing:
+#    - Use "Actions" tab → "Kong CTL Steward Agent" → "Run workflow"
+#    - Keep dry_run=true for testing
+#    - Review logs in workflow run artifacts
+#
+# 5. Going Live:
+#    - After testing in dry-run mode, change DRY_RUN to 'false' in the workflow
+#    - Or use manual workflow dispatch with dry_run=false
