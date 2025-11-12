@@ -38,13 +38,19 @@ class StewardAgent:
         self.github = GitHubClient(config.github_token, config.github_repo)
         self.vector_store = VectorStore(config.vector_db_path)
         self.llm = create_llm_provider(config)
-        self.analyzer = IssueAnalyzer(
-            self.llm, self.vector_store, config.confidence_threshold
-        )
         self.state = StateManager(config.state_file_path)
 
-        # Detect bot username for comment filtering
+        # Detect bot username for comment filtering (needed by analyzer)
         self.bot_username = self._get_bot_username()
+
+        # Initialize analyzer with github client and bot username
+        self.analyzer = IssueAnalyzer(
+            self.llm,
+            self.vector_store,
+            self.github,
+            self.bot_username,
+            config.confidence_threshold,
+        )
 
         logger.info("Agent initialization complete")
 

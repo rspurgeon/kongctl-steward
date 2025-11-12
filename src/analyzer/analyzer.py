@@ -3,7 +3,7 @@
 import json
 import logging
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, TYPE_CHECKING
 
 from ..github_client import Issue
 from ..llm import LLMProvider
@@ -12,6 +12,9 @@ from .prompts import (
     CLASSIFICATION_SYSTEM_PROMPT,
     CLASSIFICATION_PROMPT_TEMPLATE,
 )
+
+if TYPE_CHECKING:
+    from ..github_client import GitHubClient
 
 logger = logging.getLogger(__name__)
 
@@ -53,6 +56,8 @@ class IssueAnalyzer:
         self,
         llm_provider: LLMProvider,
         vector_store: VectorStore,
+        github_client: "GitHubClient",
+        bot_username: str,
         confidence_threshold: float = 0.80,
     ):
         """
@@ -61,10 +66,14 @@ class IssueAnalyzer:
         Args:
             llm_provider: LLM provider for analysis
             vector_store: Vector store for semantic search
+            github_client: GitHub client for fetching comments
+            bot_username: Bot's username for identifying own comments
             confidence_threshold: Minimum confidence for actions
         """
         self.llm = llm_provider
         self.vector_store = vector_store
+        self.github = github_client
+        self.bot_username = bot_username
         self.confidence_threshold = confidence_threshold
         logger.info(
             f"Initialized IssueAnalyzer with {llm_provider.provider_name} "
@@ -91,12 +100,16 @@ class IssueAnalyzer:
         # Build context for LLM
         similar_context = self._format_similar_issues(similar_issues)
 
+        # Get agent's previous comments on this issue
+        agent_comments = self._get_agent_comments(issue)
+
         # Get LLM analysis
         prompt = CLASSIFICATION_PROMPT_TEMPLATE.format(
             issue_number=issue.number,
             issue_title=issue.title,
             issue_body=issue.body or "(no description)",
             existing_labels=", ".join(issue.labels) if issue.labels else "none",
+            agent_comments=agent_comments,
             similar_issues=similar_context,
         )
 
@@ -187,6 +200,44 @@ class IssueAnalyzer:
                 "implementation_hints": [],
                 "overall_confidence": 0.0,
             }
+
+    def _get_agent_comments(self, issue: Issue) -> str:
+        """
+        Get agent's previous comments on this issue for LLM context.
+
+        Args:
+            issue: Issue to get comments for
+
+        Returns:
+            Formatted string of agent's previous comments
+        """
+        try:
+            all_comments = self.github.get_issue_comments(issue.number)
+
+            # Filter to only agent's comments
+            agent_comments = [
+                c for c in all_comments
+                if c["user"] == self.bot_username
+            ]
+
+            if not agent_comments:
+                return "None - this is your first time analyzing this issue."
+
+            # Format for LLM
+            lines = []
+            for i, comment in enumerate(agent_comments, 1):
+                timestamp = comment["created_at"].strftime("%Y-%m-%d %H:%M")
+                # Truncate long comments to save tokens
+                body = comment["body"]
+                if len(body) > 500:
+                    body = body[:500] + "..."
+                lines.append(f"{i}. [{timestamp}] {body}")
+
+            return "\n\n".join(lines)
+
+        except Exception as e:
+            logger.warning(f"Failed to fetch agent comments for issue #{issue.number}: {e}")
+            return "Unable to retrieve previous comments."
 
     def _format_similar_issues(self, similar_issues: list[dict[str, Any]]) -> str:
         """Format similar issues for LLM context."""

@@ -8,6 +8,12 @@ Your role is to analyze issues and provide:
 3. Detect potential duplicates based on similar issues
 4. Suggest implementation context when relevant
 
+IMPORTANT: You may have already commented on this issue in the past. Review your previous comments
+to avoid being repetitive. Only suggest new comments if:
+- The issue has changed significantly since your last comment
+- You have new information to add
+- The user has responded with new details
+
 Always respond with valid JSON matching the required schema.
 Be conservative with confidence scores - only use high confidence (>0.8) when very certain.
 """
@@ -18,6 +24,9 @@ CLASSIFICATION_PROMPT_TEMPLATE = """Analyze this GitHub issue and provide struct
 Title: {issue_title}
 Body: {issue_body}
 Existing Labels: {existing_labels}
+
+**Your Previous Comments on This Issue:**
+{agent_comments}
 
 **Similar Issues (for context):**
 {similar_issues}
@@ -50,6 +59,9 @@ Provide your analysis as JSON with this exact structure:
 - Keep implementation_hints brief and relevant to code structure
 - Only suggest 1-3 most relevant labels
 - Don't duplicate existing labels unless adding new ones
+- Review your previous comments - don't repeat information you've already provided
+- If you previously commented about duplicates/context, only add NEW information
+- If you previously requested clarification and user hasn't responded, don't ask again
 
 Respond ONLY with valid JSON, no additional text.
 """
