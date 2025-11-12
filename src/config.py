@@ -20,6 +20,9 @@ class Config(BaseSettings):
     # GitHub Configuration
     github_token: str = Field(..., description="GitHub API token")
     github_repo: str = Field(..., description="Target repository (owner/repo)")
+    github_bot_username: str | None = Field(
+        default=None, description="Bot username for comment detection (auto-detected if not set)"
+    )
 
     # LLM Provider Configuration
     llm_provider: Literal["anthropic", "openai"] = Field(
@@ -50,6 +53,12 @@ class Config(BaseSettings):
     )
     schedule_hours: int = Field(
         default=4, description="Hours between scheduled runs"
+    )
+    min_hours_between_actions: float = Field(
+        default=1.0, description="Minimum hours between actions on same issue"
+    )
+    state_cleanup_interval_hours: float = Field(
+        default=24.0, description="Hours between closed issue cleanup"
     )
 
     # Vector Database

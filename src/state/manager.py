@@ -2,7 +2,7 @@
 
 import json
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -11,12 +11,24 @@ from pydantic import BaseModel, Field
 logger = logging.getLogger(__name__)
 
 
-class ConversationState(BaseModel):
-    """State for tracking multi-turn conversations with users."""
+class IssueProcessingState(BaseModel):
+    """State for tracking processing of a single issue."""
 
-    awaiting_response: bool = False
-    attempts: int = 0
-    last_comment_at: datetime | None = None
+    issue_number: int
+
+    # Content tracking for change detection
+    content_hash: str
+    last_analyzed_at: datetime
+
+    # Action tracking
+    our_last_action: str | None = None  # Type of last action taken
+    our_last_action_at: datetime | None = None
+    labels_added: list[str] = Field(default_factory=list)  # Labels we added
+    last_comment_count: int = 0  # Comment count when we last processed
+
+    # Conversation tracking
+    awaiting_user_response: bool = False
+    clarification_attempts: int = 0
     requested_info: list[str] = Field(default_factory=list)
 
 
@@ -36,11 +48,11 @@ class AgentState(BaseModel):
     """Overall agent state."""
 
     last_run: datetime | None = None
-    processed_issues: list[int] = Field(default_factory=list)
-    conversation_state: dict[int, ConversationState] = Field(default_factory=dict)
+    last_cleanup: datetime | None = None  # Last time we cleaned up closed issues
+    issue_states: dict[int, IssueProcessingState] = Field(default_factory=dict)
     run_history: list[RunMetrics] = Field(default_factory=list)
     total_actions: int = 0
-    version: str = "0.1.0"
+    version: str = "0.2.0"  # Bumped for new state format
 
     class Config:
         json_encoders = {
@@ -60,7 +72,9 @@ class StateManager:
         """
         self.state_file = state_file
         self.state = self._load_state()
-        logger.info(f"Initialized state manager with {len(self.state.processed_issues)} processed issues")
+        logger.info(
+            f"Initialized state manager with {len(self.state.issue_states)} tracked issues"
+        )
 
     def _load_state(self) -> AgentState:
         """Load state from file or create new state."""
@@ -73,16 +87,24 @@ class StateManager:
                 if data.get("last_run"):
                     data["last_run"] = datetime.fromisoformat(data["last_run"])
 
-                # Convert conversation state timestamps
-                if data.get("conversation_state"):
-                    for issue_id, conv_state in data["conversation_state"].items():
-                        if conv_state.get("last_comment_at"):
-                            conv_state["last_comment_at"] = datetime.fromisoformat(
-                                conv_state["last_comment_at"]
+                if data.get("last_cleanup"):
+                    data["last_cleanup"] = datetime.fromisoformat(data["last_cleanup"])
+
+                # Convert issue states
+                if data.get("issue_states"):
+                    issue_states = {}
+                    for issue_id, state_data in data["issue_states"].items():
+                        # Convert datetime fields
+                        if state_data.get("last_analyzed_at"):
+                            state_data["last_analyzed_at"] = datetime.fromisoformat(
+                                state_data["last_analyzed_at"]
                             )
-                        data["conversation_state"][int(issue_id)] = ConversationState(
-                            **conv_state
-                        )
+                        if state_data.get("our_last_action_at"):
+                            state_data["our_last_action_at"] = datetime.fromisoformat(
+                                state_data["our_last_action_at"]
+                            )
+                        issue_states[int(issue_id)] = IssueProcessingState(**state_data)
+                    data["issue_states"] = issue_states
 
                 # Convert run history timestamps
                 if data.get("run_history"):
@@ -120,19 +142,29 @@ class StateManager:
             if state_dict.get("last_run"):
                 state_dict["last_run"] = self.state.last_run.isoformat()
 
-            # Convert conversation state
-            if state_dict.get("conversation_state"):
-                for issue_id, conv_state in state_dict["conversation_state"].items():
-                    if conv_state.get("last_comment_at"):
-                        conv_state["last_comment_at"] = self.state.conversation_state[
-                            int(issue_id)
-                        ].last_comment_at.isoformat()
+            if state_dict.get("last_cleanup"):
+                state_dict["last_cleanup"] = self.state.last_cleanup.isoformat()
+
+            # Convert issue states
+            if state_dict.get("issue_states"):
+                for issue_id, issue_state in state_dict["issue_states"].items():
+                    original = self.state.issue_states[int(issue_id)]
+                    if issue_state.get("last_analyzed_at"):
+                        issue_state["last_analyzed_at"] = (
+                            original.last_analyzed_at.isoformat()
+                        )
+                    if issue_state.get("our_last_action_at") and original.our_last_action_at:
+                        issue_state["our_last_action_at"] = (
+                            original.our_last_action_at.isoformat()
+                        )
 
             # Convert run history
             if state_dict.get("run_history"):
                 for i, run in enumerate(state_dict["run_history"]):
                     if run.get("timestamp"):
-                        run["timestamp"] = self.state.run_history[i].timestamp.isoformat()
+                        run["timestamp"] = self.state.run_history[
+                            i
+                        ].timestamp.isoformat()
 
             with open(self.state_file, "w") as f:
                 json.dump(state_dict, f, indent=2)
@@ -143,45 +175,100 @@ class StateManager:
             logger.error(f"Failed to save state: {e}")
             raise
 
-    def mark_issue_processed(self, issue_number: int) -> None:
-        """Mark an issue as processed."""
-        if issue_number not in self.state.processed_issues:
-            self.state.processed_issues.append(issue_number)
+    def get_issue_state(self, issue_number: int) -> IssueProcessingState | None:
+        """Get processing state for an issue."""
+        return self.state.issue_states.get(issue_number)
 
-    def is_issue_processed(self, issue_number: int) -> bool:
-        """Check if issue has been processed."""
-        return issue_number in self.state.processed_issues
+    def get_or_create_issue_state(
+        self, issue_number: int, content_hash: str
+    ) -> IssueProcessingState:
+        """Get or create processing state for an issue."""
+        if issue_number not in self.state.issue_states:
+            self.state.issue_states[issue_number] = IssueProcessingState(
+                issue_number=issue_number,
+                content_hash=content_hash,
+                last_analyzed_at=datetime.now(),
+            )
+        return self.state.issue_states[issue_number]
 
-    def update_conversation(
+    def update_issue_state(
         self,
         issue_number: int,
-        awaiting_response: bool = False,
+        content_hash: str | None = None,
+        action_type: str | None = None,
+        labels_added: list[str] | None = None,
+        comment_count: int | None = None,
+        awaiting_response: bool | None = None,
         requested_info: list[str] | None = None,
     ) -> None:
-        """Update conversation state for an issue."""
-        if issue_number not in self.state.conversation_state:
-            self.state.conversation_state[issue_number] = ConversationState()
+        """Update issue processing state."""
+        state = self.state.issue_states.get(issue_number)
+        if not state:
+            logger.warning(f"Attempted to update non-existent state for issue #{issue_number}")
+            return
 
-        conv = self.state.conversation_state[issue_number]
-        conv.awaiting_response = awaiting_response
-        conv.last_comment_at = datetime.now()
+        if content_hash:
+            state.content_hash = content_hash
 
-        if awaiting_response:
-            conv.attempts += 1
+        if action_type:
+            state.our_last_action = action_type
+            state.our_last_action_at = datetime.now()
+
+        if labels_added:
+            state.labels_added.extend(labels_added)
+            state.labels_added = list(set(state.labels_added))  # Deduplicate
+
+        if comment_count is not None:
+            state.last_comment_count = comment_count
+
+        if awaiting_response is not None:
+            state.awaiting_user_response = awaiting_response
+            if awaiting_response:
+                state.clarification_attempts += 1
 
         if requested_info:
-            conv.requested_info = requested_info
+            state.requested_info = requested_info
 
-    def get_conversation_state(self, issue_number: int) -> ConversationState | None:
-        """Get conversation state for an issue."""
-        return self.state.conversation_state.get(issue_number)
+        state.last_analyzed_at = datetime.now()
 
-    def should_request_info(self, issue_number: int, max_attempts: int = 2) -> bool:
-        """Check if we should request more information from user."""
-        conv = self.get_conversation_state(issue_number)
-        if not conv:
+    def should_cleanup_closed_issues(
+        self, cleanup_interval_hours: float
+    ) -> bool:
+        """Check if we should run cleanup of closed issues."""
+        if not self.state.last_cleanup:
             return True
-        return conv.attempts < max_attempts
+
+        hours_since = (
+            datetime.now() - self.state.last_cleanup
+        ).total_seconds() / 3600
+        return hours_since >= cleanup_interval_hours
+
+    def cleanup_closed_issues(self, open_issue_numbers: set[int]) -> int:
+        """
+        Remove closed issues from state.
+
+        Args:
+            open_issue_numbers: Set of currently open issue numbers
+
+        Returns:
+            Number of closed issues removed
+        """
+        original_count = len(self.state.issue_states)
+
+        # Keep only issues that are still open
+        self.state.issue_states = {
+            issue_id: state
+            for issue_id, state in self.state.issue_states.items()
+            if issue_id in open_issue_numbers
+        }
+
+        removed = original_count - len(self.state.issue_states)
+        self.state.last_cleanup = datetime.now()
+
+        if removed > 0:
+            logger.info(f"Cleaned up {removed} closed issues from state")
+
+        return removed
 
     def start_run(self, run_id: str) -> RunMetrics:
         """Start a new run and return metrics object."""
