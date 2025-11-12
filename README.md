@@ -49,6 +49,7 @@ kongctl-steward reduces maintainer toil by ensuring issues are clear, properly c
 - Add comment linking to related issues
 - Add `potential-duplicate` label for maintainer review
 - Cross-reference historical issues via semantic search
+- Full context of previous comments prevents re-mentioning known duplicates
 
 #### Context Enrichment
 
@@ -56,6 +57,7 @@ kongctl-steward reduces maintainer toil by ensuring issues are clear, properly c
 - Reference relevant documentation sections
 - Link to related features or past decisions
 - Identify relevant library/dependency context
+- Agent self-awareness ensures only new, valuable information is added
 
 #### Information Gathering
 
@@ -63,6 +65,8 @@ kongctl-steward reduces maintainer toil by ensuring issues are clear, properly c
 - Use turn-based conversation to gather details
 - Stop requesting after 2 attempts to avoid annoyance
 - Track conversation state between scheduled runs
+- Full context of previous comments prevents repetitive requests
+- Won't re-request clarification if user hasn't responded
 
 ### Enhanced Capabilities (Phase 2)
 
@@ -106,6 +110,7 @@ Issue Fetcher → Decision Engine → Action Executor
 - **Stateless processing** with state file for tracking processed issues
 - **Vector database** for knowledge persistence and semantic search
 - **Separate concerns**: retrieval (vector DB) vs reasoning (LLM)
+- **Agent self-awareness**: LLM receives context of its previous comments to prevent repetition
 - **Event-driven processing NOT required** due to relaxed SLA requirements
 
 **Flexible Implementation Choices:**
@@ -270,6 +275,8 @@ MAX_MONTHLY_COST = 30.00
 - Only process issues created/updated since last run
 - Maintain conversation state for multi-turn interactions
 - Rotate processed issue list to prevent unbounded growth
+- Fetch and provide agent's previous comments to LLM for context
+- Prevent repetitive comments through LLM-powered decision making
 
 ## Monitoring & Evaluation
 
