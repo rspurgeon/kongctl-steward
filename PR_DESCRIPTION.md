@@ -20,6 +20,7 @@ This PR implements **Phase 1 (Read-Only Observer)** of the kongctl-steward auton
 - **Context Enrichment**: Implementation hints and related issue references
 - **Clarification Requests**: Identifies missing information and drafts requests (max 2 attempts)
 - **Smart Reprocessing**: Re-analyzes issues when users add information or edit content
+- **Agent Self-Awareness**: Full context of previous comments prevents repetition and spam
 
 #### Operational Features
 - **Dry-Run Mode**: Logs all proposed actions without executing them (default enabled)
@@ -33,7 +34,8 @@ This PR implements **Phase 1 (Read-Only Observer)** of the kongctl-steward auton
 - **Content Change Detection**: SHA-256 hashing with whitespace normalization
 - **Cooldown Period**: 1-hour minimum between actions on same issue (configurable)
 - **Respects Maintainers**: Never re-adds labels that were removed
-- **Comment Filtering**: Auto-detects and ignores agent's own comments
+- **Agent Comment Context**: LLM receives full history of its previous comments to avoid repetition
+- **Smart Comment Filtering**: Auto-detects bot username and filters own comments from reprocessing triggers
 - **Bounded State Growth**: State file size limited to number of open issues only
 
 #### Automation
@@ -52,7 +54,8 @@ This PR implements **Phase 1 (Read-Only Observer)** of the kongctl-steward auton
 6. `e641ee8` - Add state management for persistence
 7. `eb1b319` - Add main agent orchestration with dry-run mode
 8. `098316c` - Add knowledge base init script and GitHub Actions workflow
-9. `6c0b527` - **Add smart reprocessing with content change detection** ⭐
+9. `6c0b527` - Add smart reprocessing with content change detection
+10. `a3e5879` - **Add LLM context about agent's previous comments** ⭐
 
 ### Key Features: Smart Reprocessing
 
@@ -69,6 +72,39 @@ The agent intelligently decides when to reprocess issues:
 - ❌ No changes since our last action
 - ❌ Only agent activity (our own comments/labels)
 - ❌ Maintainer removed labels we added (respects their decision)
+
+### Key Features: Agent Self-Awareness
+
+The agent has full context of its previous comments, enabling intelligent decisions about when to comment:
+
+**How it works:**
+- 🧠 **LLM receives formatted history** of all its previous comments on each issue
+- 📅 **Timestamped context** shows when the agent last provided input
+- 🎯 **Intelligent decisions** about whether new information adds value
+- 🚫 **No repetition** of previously mentioned duplicates or context
+- ⏸️ **Won't nag** users who haven't responded to clarification requests
+
+**Example LLM context:**
+```
+**Your Previous Comments on This Issue:**
+1. [2024-11-12 10:00] This appears related to #45...
+2. [2024-11-12 14:30] Please provide version number and steps...
+
+**Issue content**
+...
+```
+
+**Agent can now:**
+- ✅ Decide: "I already mentioned duplicate #45, no need to repeat"
+- ✅ Decide: "I requested clarification but user hasn't responded, don't ask again"
+- ✅ Decide: "User added new details, I can now provide implementation hints"
+- ✅ Work seamlessly whether running as personal token or GitHub App
+
+**Benefits:**
+- Natural, human-like commenting behavior
+- No spam or repetitive comments
+- Contextual awareness across multiple runs
+- Minimal cost (one extra API call only for reprocessed issues)
 
 ### Testing Instructions
 
@@ -145,6 +181,20 @@ python steward.py --dry-run  # Should skip due to cooldown
 4. Run agent → Requests clarification (attempt 2)
 5. Don't respond, wait 1 hour
 6. Run agent → Should NOT request again (max 2 attempts)
+
+**Test Agent Self-Awareness:**
+1. Create a duplicate issue (similar to an existing one)
+2. Enable live mode and run agent → Agent comments about duplicate
+3. Edit issue to add more details (don't mention the duplicate)
+4. Wait 1 hour and run again → Agent should NOT re-mention duplicate
+5. Check logs to see: "I already mentioned duplicate #X"
+
+**Test Clarification Persistence:**
+1. Create vague issue (e.g., "Feature doesn't work")
+2. Run agent → Requests clarification
+3. Don't respond, wait 1 hour
+4. Run agent again → Should NOT request clarification again
+5. Check logs to see: "I previously requested clarification but user hasn't responded"
 
 #### GitHub Actions Testing
 
@@ -294,9 +344,10 @@ See `.env.example` for complete configuration reference.
 1. Cooldown period (1 hour default between actions on same issue)
 2. Content hash comparison (only reprocess on meaningful changes)
 3. Bot comment filtering (don't react to our own comments)
-4. Timestamp comparison (only act on changes after our last action)
-5. Max clarification attempts (2 per issue)
-6. Label removal respect (never re-add removed labels)
+4. Agent comment context (LLM sees previous comments, decides not to repeat)
+5. Timestamp comparison (only act on changes after our last action)
+6. Max clarification attempts (2 per issue)
+7. Label removal respect (never re-add removed labels)
 
 **Error Handling:**
 - Graceful degradation on API failures
