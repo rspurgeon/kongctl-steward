@@ -37,8 +37,8 @@ ENV/
 *.swo
 *~
 
-# State and data
-state/
+# State and data (runtime state directory, not source code)
+/state/
 *.db
 *.sqlite
 *.sqlite3
