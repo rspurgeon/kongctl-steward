@@ -12,6 +12,7 @@ from rich.logging import RichHandler
 # Add src to path for imports
 sys.path.insert(0, str(Path(__file__).parent))
 
+from src.agent import StewardAgent
 from src.config import load_config
 
 console = Console()
@@ -87,14 +88,11 @@ def main(dry_run: bool | None, repo: str | None, max_issues: int | None) -> None
         logger.info(f"Target repository: {config.github_repo}")
         logger.info(f"Dry-run mode: {config.dry_run}")
 
-        # TODO: Implement main agent loop
-        # 1. Load or initialize state
-        # 2. Fetch issues from GitHub
-        # 3. Process each issue
-        # 4. Log/execute actions
-        # 5. Save state
+        # Initialize and run agent
+        agent = StewardAgent(config)
+        agent.run()
 
-        console.print("[green]✓[/green] Agent execution complete\n")
+        console.print("\n[green]✓[/green] Agent execution complete\n")
 
     except Exception as e:
         console.print(f"\n[bold red]Error:[/bold red] {e}\n")
