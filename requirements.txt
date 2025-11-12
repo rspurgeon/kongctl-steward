@@ -1,0 +1,26 @@
+# Core dependencies
+python-dotenv>=1.0.0
+pydantic>=2.0.0
+pydantic-settings>=2.0.0
+
+# GitHub API
+PyGithub>=2.1.0
+
+# LLM Providers
+anthropic>=0.34.0
+openai>=1.0.0
+
+# Vector Database
+chromadb>=0.4.0
+
+# Utilities
+requests>=2.31.0
+tenacity>=8.2.0  # For retry logic
+rich>=13.0.0  # For beautiful console output
+click>=8.1.0  # For CLI interface
+
+# Optional: Development dependencies
+# pytest>=7.4.0
+# pytest-cov>=4.1.0
+# black>=23.0.0
+# ruff>=0.1.0
