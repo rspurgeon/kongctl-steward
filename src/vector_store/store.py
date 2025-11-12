@@ -26,8 +26,10 @@ class VectorStore:
         self.persist_directory.mkdir(parents=True, exist_ok=True)
 
         # Initialize ChromaDB with persistence
+        # Use chroma_db_impl and persist_directory for 0.3.x compatibility
         self.client = chromadb.Client(
             Settings(
+                chroma_db_impl="duckdb+parquet",
                 persist_directory=str(self.persist_directory),
                 anonymized_telemetry=False,
             )
@@ -74,6 +76,9 @@ class VectorStore:
             metadatas=[metadata],
         )
 
+        # Persist changes to disk
+        self.client.persist()
+
         logger.debug(f"Added issue #{issue.number} to vector store")
 
     def add_issues(self, issues: list[Issue]) -> None:
@@ -106,6 +111,9 @@ class VectorStore:
             documents=documents,
             metadatas=metadatas,
         )
+
+        # Persist changes to disk
+        self.client.persist()
 
         logger.info(f"Added {len(issues)} issues to vector store")
 
@@ -225,6 +233,7 @@ class VectorStore:
             name="issues",
             metadata={"description": "GitHub issues for kongctl-steward"},
         )
+        self.client.persist()
         logger.warning("Cleared all issues from vector store")
 
     @staticmethod
