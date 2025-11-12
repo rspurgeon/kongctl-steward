@@ -1,6 +1,11 @@
 #!/usr/bin/env python
 """kongctl-steward: Main entry point for the GitHub issue management agent."""
 
+import os
+
+# Suppress tokenizers parallelism warning (occurs when using ChromaDB embeddings)
+os.environ["TOKENIZERS_PARALLELISM"] = "false"
+
 import logging
 import sys
 from pathlib import Path
