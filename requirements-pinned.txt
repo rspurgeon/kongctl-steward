@@ -1,0 +1,21 @@
+# Pinned versions for faster, reliable installation
+# Core dependencies
+python-dotenv==1.0.0
+pydantic==2.5.0
+pydantic-settings==2.1.0
+
+# GitHub API
+PyGithub==2.1.1
+
+# LLM Providers
+anthropic==0.39.0
+openai==1.3.0
+
+# Vector Database (install this first if issues persist)
+chromadb==0.4.22
+
+# Utilities
+requests==2.31.0
+tenacity==8.2.3
+rich==13.7.0
+click==8.1.7
