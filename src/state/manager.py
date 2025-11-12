@@ -135,8 +135,8 @@ class StateManager:
         try:
             self.state_file.parent.mkdir(parents=True, exist_ok=True)
 
-            # Convert to dict with proper serialization
-            state_dict = self.state.model_dump(mode="json")
+            # Convert to dict with proper serialization (pydantic v1 uses dict())
+            state_dict = self.state.dict()
 
             # Manually convert datetimes to ISO format
             if state_dict.get("last_run"):
