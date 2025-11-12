@@ -13,9 +13,9 @@ PyGithub==2.1.1
 anthropic==0.39.0
 openai==1.3.0
 
-# Vector Database - using older version that doesn't require pulsar-client
-# Version 0.4.15 works on most platforms without exotic dependencies
-chromadb==0.4.15
+# Vector Database - using version 0.3.29 which doesn't require pulsar-client
+# Later versions added Apache Pulsar dependency which causes installation issues
+chromadb==0.3.29
 
 # Utilities
 requests==2.31.0
