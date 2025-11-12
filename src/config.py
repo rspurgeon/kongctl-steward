@@ -1,26 +1,25 @@
 """Configuration management for kongctl-steward agent."""
 
+import os
 from pathlib import Path
-from typing import Literal
+from typing import Literal, Optional
 
-from pydantic import Field
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from dotenv import load_dotenv
+from pydantic import BaseModel, Field
 
 
-class Config(BaseSettings):
+class Config(BaseModel):
     """Agent configuration loaded from environment variables."""
 
-    model_config = SettingsConfigDict(
-        env_file=".env",
-        env_file_encoding="utf-8",
-        case_sensitive=False,
-        extra="ignore",
-    )
+    class Config:
+        """Pydantic v1 config."""
+        case_sensitive = False
+        extra = "ignore"
 
     # GitHub Configuration
     github_token: str = Field(..., description="GitHub API token")
     github_repo: str = Field(..., description="Target repository (owner/repo)")
-    github_bot_username: str | None = Field(
+    github_bot_username: Optional[str] = Field(
         default=None, description="Bot username for comment detection (auto-detected if not set)"
     )
 
@@ -30,7 +29,7 @@ class Config(BaseSettings):
     )
 
     # Anthropic Configuration
-    anthropic_api_key: str | None = Field(
+    anthropic_api_key: Optional[str] = Field(
         default=None, description="Anthropic API key"
     )
     anthropic_model: str = Field(
@@ -38,7 +37,7 @@ class Config(BaseSettings):
     )
 
     # OpenAI Configuration
-    openai_api_key: str | None = Field(default=None, description="OpenAI API key")
+    openai_api_key: Optional[str] = Field(default=None, description="OpenAI API key")
     openai_model: str = Field(
         default="gpt-4-turbo-preview", description="OpenAI model to use"
     )
@@ -102,7 +101,31 @@ class Config(BaseSettings):
 
 def load_config() -> Config:
     """Load and validate configuration."""
-    config = Config()
+    # Load environment variables from .env file
+    load_dotenv()
+
+    # Create config from environment variables
+    config = Config(
+        github_token=os.getenv("GITHUB_TOKEN", ""),
+        github_repo=os.getenv("GITHUB_REPO", ""),
+        github_bot_username=os.getenv("GITHUB_BOT_USERNAME"),
+        llm_provider=os.getenv("LLM_PROVIDER", "anthropic"),
+        anthropic_api_key=os.getenv("ANTHROPIC_API_KEY"),
+        anthropic_model=os.getenv("ANTHROPIC_MODEL", "claude-3-5-sonnet-20241022"),
+        openai_api_key=os.getenv("OPENAI_API_KEY"),
+        openai_model=os.getenv("OPENAI_MODEL", "gpt-4-turbo-preview"),
+        dry_run=os.getenv("DRY_RUN", "true").lower() == "true",
+        confidence_threshold=float(os.getenv("CONFIDENCE_THRESHOLD", "0.80")),
+        max_issues_per_run=int(os.getenv("MAX_ISSUES_PER_RUN", "20")),
+        schedule_hours=int(os.getenv("SCHEDULE_HOURS", "4")),
+        min_hours_between_actions=float(os.getenv("MIN_HOURS_BETWEEN_ACTIONS", "1.0")),
+        state_cleanup_interval_hours=float(os.getenv("STATE_CLEANUP_INTERVAL_HOURS", "24.0")),
+        vector_db_path=os.getenv("VECTOR_DB_PATH", "./chroma_db"),
+        state_file=os.getenv("STATE_FILE", "./state/agent_state.json"),
+        log_level=os.getenv("LOG_LEVEL", "INFO"),
+        log_file=os.getenv("LOG_FILE", "./logs/steward.log"),
+    )
+
     config.validate_llm_config()
 
     # Ensure directories exist
