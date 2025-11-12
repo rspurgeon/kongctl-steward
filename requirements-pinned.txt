@@ -1,4 +1,6 @@
 # Pinned versions for faster, reliable installation
+# Tested and working together without dependency conflicts
+
 # Core dependencies
 python-dotenv==1.0.0
 pydantic==2.5.0
@@ -11,8 +13,9 @@ PyGithub==2.1.1
 anthropic==0.39.0
 openai==1.3.0
 
-# Vector Database (install this first if issues persist)
-chromadb==0.4.22
+# Vector Database - using older version that doesn't require pulsar-client
+# Version 0.4.15 works on most platforms without exotic dependencies
+chromadb==0.4.15
 
 # Utilities
 requests==2.31.0
