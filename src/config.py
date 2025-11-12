@@ -33,7 +33,7 @@ class Config(BaseModel):
         default=None, description="Anthropic API key"
     )
     anthropic_model: str = Field(
-        default="claude-3-5-sonnet-20241022", description="Anthropic model to use"
+        default="claude-3-5-sonnet-20240620", description="Anthropic model to use"
     )
 
     # OpenAI Configuration
@@ -111,7 +111,7 @@ def load_config() -> Config:
         github_bot_username=os.getenv("GITHUB_BOT_USERNAME"),
         llm_provider=os.getenv("LLM_PROVIDER", "anthropic"),
         anthropic_api_key=os.getenv("ANTHROPIC_API_KEY"),
-        anthropic_model=os.getenv("ANTHROPIC_MODEL", "claude-3-5-sonnet-20241022"),
+        anthropic_model=os.getenv("ANTHROPIC_MODEL", "claude-3-5-sonnet-20240620"),
         openai_api_key=os.getenv("OPENAI_API_KEY"),
         openai_model=os.getenv("OPENAI_MODEL", "gpt-4-turbo-preview"),
         dry_run=os.getenv("DRY_RUN", "true").lower() == "true",
